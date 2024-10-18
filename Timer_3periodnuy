@@ -1,0 +1,7 @@
+reg reset;
+reg [3:0]rst_delay = 0;
+always @(posedge clk_50MHz_i)
+	rst_delay <= { rst_delay[2:0], 1'b1 };
+ 
+always @*
+  reset = ~rst_delay[3];
