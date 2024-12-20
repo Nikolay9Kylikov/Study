@@ -1,0 +1,158 @@
+`timescale 1 ns / 1 ps
+
+module tb_buffer;
+
+
+	reg rst = 1'b0;
+	reg clk = 1'b0;
+	always #4 clk = ~clk;
+
+	reg  rx_valid = 1'b0;
+	reg  rx_last = 1'b0;
+	reg  rx_user = 1'b0;
+	reg [7:0] rx_keep = 8'h0;
+	reg  [63:0] rx_data = 64'h0;
+
+	reg tx_sync_start = 1'b0;
+	wire [63:0] tx_data;
+	wire tx_valid;
+	wire [7:0] tx_keep;
+	wire tx_last;
+	wire tx_user;
+
+
+	buffer fifo (
+		.rst_i				(rst),
+		.clk_i				(clk),
+		.rx_valid_i			(rx_valid),
+		.rx_last_i			(rx_last),
+		.rx_user_i			(rx_user),
+		.rx_keep_i			(rx_keep),
+		.rx_data_i			(rx_data),
+		.tx_sync_start_i	(tx_sync_start),
+		.tx_valid_o			(tx_valid),
+		.tx_data_o			(tx_data),
+		.tx_last_o			(tx_last),
+		.tx_user_o			(tx_user),	
+		.tx_keep_o 			(tx_keep)
+	);
+
+
+	reg [4:0] cnt = 5'd0;
+	always @ (posedge clk) begin
+		cnt <= cnt + 5'd1;
+		tx_sync_start <= cnt == 5'd31;
+	end
+
+
+	integer i;
+	integer j;
+	integer k;
+	initial begin
+		
+		rst = 1'b1;
+		#100;
+		rst = 1'b0;
+
+		#200;
+
+		@ (posedge clk);
+		rx_valid = 1'b1;
+		rx_last =  1'b0;
+		rx_user =  1'b0;
+		rx_keep =  8'hFF;
+		for (i = 1; i <= 8; i = i + 1 ) begin
+			@ (posedge clk);
+			rx_valid = 1'b1;
+			if (i == 8) begin
+				rx_last = 1'b1;
+				rx_user = 1'b1;
+			end else begin
+				rx_last = 1'b0;
+				rx_user = 1'b0;
+			end
+			rx_keep = 8'hFF;
+			rx_data = {
+				(i [7:0]) + 8'd7,
+				(i [7:0]) + 8'd6,
+				(i [7:0]) + 8'd5,
+				(i [7:0]) + 8'd4,
+				(i [7:0]) + 8'd3,
+				(i [7:0]) + 8'd2,
+				(i [7:0]) + 8'd1,
+				(i [7:0])
+			};
+		end
+		
+		@ (posedge clk);
+		rx_last = 1'b0;
+		rx_user = 1'b0;
+		rx_valid = 1'b0;
+		rx_keep =  8'h0;
+		rx_data = 64'd0;
+
+		for (j = 1; j <= 8; j = j + 1 ) begin
+			@ (posedge clk);
+			rx_valid = 1'b1;
+			if (j == 8) begin
+				rx_last = 1'b1;
+				rx_user = 1'b0; //посылка с ошибкой
+				rx_keep = 8'h7F;
+			end else begin
+				rx_last = 1'b0;
+				rx_user = 1'b0;
+				rx_keep = 8'hFF;
+			end
+			rx_data = {
+				(j [7:0]) + 8'd1,
+				(j [7:0]) + 8'd2,
+				(j [7:0]) + 8'd3,
+				(j [7:0]) + 8'd4,
+				(j [7:0]) + 8'd5,
+				(j [7:0]) + 8'd6,
+				(j [7:0]) + 8'd7,
+				(j [7:0])
+			};
+		end
+		@ (posedge clk);
+		rx_last = 1'b0;
+		rx_user = 1'b0;
+		rx_valid = 1'b0;
+		rx_keep =  8'h00;
+		rx_data = 64'd0;
+
+		for (k = 1; k <= 4; k = k + 1 ) begin
+			@ (posedge clk);
+			rx_valid = 1'b1;
+			if (k == 4) begin
+				rx_last = 1'b1;
+				rx_user = 1'b1;
+				rx_keep = 8'h3F;
+			end else begin
+				rx_last = 1'b0;
+				rx_user = 1'b0;
+				rx_keep = 8'hFF;
+			end
+			rx_data = {
+				(k [7:0]) + 8'd6,
+				(k [7:0]) + 8'd4,
+				(k [7:0]) + 8'd3,
+				(k [7:0]) + 8'd4,
+				(k [7:0]) + 8'd5,
+				(k [7:0]) + 8'd6,
+				(k [7:0]) + 8'd7,
+				(k [7:0])
+			};
+		end
+		@ (posedge clk);
+		rx_last = 1'b0;
+		rx_user = 1'b0;
+		rx_valid = 1'b0;
+		rx_keep =  8'h00;
+		rx_data = 64'd0;
+
+		#500;
+		$finish();
+
+	end
+endmodule
