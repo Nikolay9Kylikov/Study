@@ -1,0 +1,160 @@
+`timescale 1ns / 1ps
+
+module buffer ( 
+	input  rst_i, 
+	input  clk_i,
+
+	input  rx_valid_i,
+	input  rx_last_i,
+	input  rx_user_i,
+	input  [7:0] rx_keep_i, //keep-побитовый enable
+	input  [63:0] rx_data_i,
+
+	input   tx_sync_start_i,
+	output  reg [7:0] tx_keep_o,
+	output  reg tx_valid_o,
+	output  reg [63:0] tx_data_o,
+	output  reg tx_last_o,
+	output  reg tx_user_o	
+);
+		
+		
+	//--------Write---------
+	reg [10:0] wr_ptr; //= 9'b0; pointer to next frame
+	wire wr_en;
+	reg [10:0] wr_addr;
+	reg [71:0] wr_data;
+
+	localparam
+		STATE_IDLE_W = 1'b0,
+		STATE_WRITE = 1'b1
+	;
+	reg state = 1'b0;
+
+	always @ (posedge clk_i) begin
+		case (state)
+			STATE_IDLE_W :
+				if (rx_valid_i)
+					state <= STATE_WRITE;
+			STATE_WRITE :
+				if (~rx_valid_i)
+					state <= STATE_IDLE_W;
+		endcase
+	end
+	assign wr_en = state == STATE_WRITE;
+
+
+	//----------WRITE_DATA-------------- 
+	always @ (posedge clk_i) begin
+		wr_data <= { rx_last_i, rx_keep_i [7:1], rx_data_i }; //[7:0] rx_keep_i нужен только для 0х255, когда передается 8байт
+	end
+
+  
+	//-------WRITE_ENABLE--------------- //без автомата состояний
+	// always @ (posedge clk_i) begin
+	// 	wr_en <= rx_valid_i;
+	// end
+
+
+	//-------POINTER_NEXT_FRAME--------------
+	reg [10:0] cnt_len = 11'd0;
+
+	always @ (posedge clk_i) begin
+		if (rst_i) begin
+			wr_ptr <= 11'd0;
+		end
+		else begin
+			if (rx_valid_i & rx_last_i & rx_user_i) // frame is fine
+				wr_ptr <= wr_ptr + cnt_len + 11'd1;
+		end
+	end
+
+
+	always @ (posedge clk_i) begin
+		if (rx_valid_i) //
+			cnt_len <= cnt_len + 11'd1;
+		else
+			cnt_len <= 11'd0;
+	end
+
+
+	//-------WRITE_ADDRESS-------------
+	always @ (posedge clk_i) begin
+		if (state == STATE_WRITE)
+			wr_addr <= wr_addr + 11'd1;
+		else
+			wr_addr <= wr_ptr;
+	end
+
+
+	//---------Read-------------
+	localparam 
+		STATE_IDLE = 2'b00,
+		STATE_START =  2'b01,
+		STATE_READ = 2'b10;
+
+	reg [1:0] rd_state;
+	
+	reg [10:0] rd_addr;
+	wire [71:0] rd_data;
+	wire rd_last = rd_data [71];
+
+	wire empty = (wr_ptr - rd_addr) == 11'd0; //показатель, что память прочитана
+
+
+	always @ (posedge clk_i) begin
+		if (rst_i) 
+			rd_state <= STATE_IDLE;
+		else begin
+			case (rd_state)
+				STATE_IDLE:
+					if (~empty & tx_sync_start_i)
+						rd_state <= STATE_START;
+				STATE_START:
+					rd_state <= STATE_READ;
+				STATE_READ:
+					if (rd_last)
+						rd_state <= STATE_IDLE;
+			endcase 
+		end
+	end
+
+
+	always @ (posedge clk_i) begin
+		if (rst_i) 
+			rd_addr <= 11'd0;
+		else if (rd_state != STATE_IDLE & ~rd_last) begin //&~rd_data [71]; &~rd_last
+			//if (tx_valid_o)
+			rd_addr <= rd_addr + 11'd1; //rd_addr <= ++rd_addr
+		//tx_data_o <= rd_data [63:0];
+		end
+	end 
+
+
+	//-------Output-------------
+	always @ (posedge clk_i) begin
+		tx_valid_o <= rd_state == STATE_READ;
+	end
+
+	
+	always @ (posedge clk_i) begin
+		tx_data_o <= rd_data [63:0];
+		tx_keep_o <= { rd_data [70:64], 1'b1 };
+		tx_last_o <= rd_last;
+		tx_user_o <= rd_last;
+	end
+
+
+	//------------RAM------------
+	bram bram (
+		.rst_i     (rst_i),
+		.clk_i     (clk_i),
+		.wr_en_i   (wr_en),
+		.wr_addr_i (wr_addr),
+		.wr_data_i (wr_data),
+		.rd_addr_i (rd_addr),
+		.rd_data_o (rd_data)
+	);
+	
+		
+endmodule
