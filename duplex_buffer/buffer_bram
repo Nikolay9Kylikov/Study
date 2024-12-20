@@ -1,0 +1,43 @@
+`timescale 1ns / 1ps
+
+module bram (
+	input  rst_i,
+	input  clk_i,
+
+	input  wr_en_i,
+	input  [10:0] wr_addr_i,
+	input  [71:0] wr_data_i,
+
+	input  [10:0] rd_addr_i, 
+	output reg [71:0] rd_data_o
+);
+	
+	
+	integer i;
+
+
+	//--------RAM block---------
+	
+	reg [71:0] bram [2047:0]; // задание блока памяти
+
+	initial begin // задание адресации в bram 
+		for (i = 0; i < 2048; i = i + 1)
+			bram [i] <= 72'h0; // инициализация
+	end
+	
+	
+	always @ (posedge clk_i) begin
+		if (wr_en_i)
+			bram [wr_addr_i] <= wr_data_i;
+	end
+
+
+	always @ (posedge clk_i) begin
+		rd_data_o <= bram [rd_addr_i];
+	end
+
+
+endmodule
+
+
+
